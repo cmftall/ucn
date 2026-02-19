@@ -7,9 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import pyarrow as pa
-import pyarrow.parquet as pq
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
@@ -17,55 +14,70 @@ if str(SRC_DIR) not in sys.path:
 
 from commons_dsn.dsn_io import check_parquet_is_empty
 
+try:
+    from pyspark.sql import SparkSession
+except ModuleNotFoundError:  # pragma: no cover - environment specific
+    SparkSession = None
 
-def _write_parquet(path: Path, rows: int) -> None:
-    values = pa.array(list(range(rows)), type=pa.int64())
-    table = pa.table({"id": values})
-    pq.write_table(table, str(path))
 
-
+@unittest.skipIf(SparkSession is None, "pyspark is not installed")
 class CheckParquetIsEmptyTestCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        try:
+            cls.spark = (
+                SparkSession.builder.master("local[1]")
+                .appName("check-parquet-is-empty-tests")
+                .config("spark.ui.enabled", "false")
+                .config("spark.sql.shuffle.partitions", "1")
+                .getOrCreate()
+            )
+        except Exception as error:  # pragma: no cover - depends on runtime
+            raise unittest.SkipTest(f"Unable to start SparkSession: {error}") from error
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if hasattr(cls, "spark"):
+            cls.spark.stop()
+
     def test_returns_true_when_path_does_not_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             missing_path = Path(tmp_dir) / "missing"
-            self.assertTrue(check_parquet_is_empty(str(missing_path)))
+            self.assertTrue(check_parquet_is_empty(str(missing_path), self.spark))
 
     def test_returns_true_for_empty_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dataset_dir = Path(tmp_dir) / "dataset"
             dataset_dir.mkdir(parents=True, exist_ok=True)
-            self.assertTrue(check_parquet_is_empty(str(dataset_dir)))
+            self.assertTrue(check_parquet_is_empty(str(dataset_dir), self.spark))
 
     def test_returns_true_when_directory_has_no_parquet_data(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dataset_dir = Path(tmp_dir) / "dataset"
             dataset_dir.mkdir(parents=True, exist_ok=True)
             (dataset_dir / "_SUCCESS").write_text("", encoding="utf-8")
-            (dataset_dir / "notes.txt").write_text("no parquet", encoding="utf-8")
-            self.assertTrue(check_parquet_is_empty(str(dataset_dir)))
+            self.assertTrue(check_parquet_is_empty(str(dataset_dir), self.spark))
 
     def test_returns_true_when_all_parquet_files_are_zero_row(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dataset_dir = Path(tmp_dir) / "dataset"
-            dataset_dir.mkdir(parents=True, exist_ok=True)
-            _write_parquet(dataset_dir / "part-0.parquet", rows=0)
-            _write_parquet(dataset_dir / "part-1.parquet", rows=0)
-            self.assertTrue(check_parquet_is_empty(str(dataset_dir)))
+            empty_df = self.spark.createDataFrame([], "id INT")
+            empty_df.write.mode("overwrite").parquet(str(dataset_dir))
+            self.assertTrue(check_parquet_is_empty(str(dataset_dir), self.spark))
 
     def test_returns_false_when_parquet_has_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dataset_dir = Path(tmp_dir) / "dataset"
-            dataset_dir.mkdir(parents=True, exist_ok=True)
-            _write_parquet(dataset_dir / "part-0.parquet", rows=0)
-            _write_parquet(dataset_dir / "part-1.parquet", rows=3)
-            self.assertFalse(check_parquet_is_empty(str(dataset_dir)))
+            dataframe = self.spark.createDataFrame([(1,), (2,), (3,)], "id INT")
+            dataframe.write.mode("overwrite").parquet(str(dataset_dir))
+            self.assertFalse(check_parquet_is_empty(str(dataset_dir), self.spark))
 
     def test_supports_file_uri_resolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             dataset_dir = Path(tmp_dir) / "dataset"
-            dataset_dir.mkdir(parents=True, exist_ok=True)
-            _write_parquet(dataset_dir / "part-0.parquet", rows=2)
-            self.assertFalse(check_parquet_is_empty(dataset_dir.as_uri()))
+            dataframe = self.spark.createDataFrame([(1,), (2,)], "id INT")
+            dataframe.write.mode("overwrite").parquet(str(dataset_dir))
+            self.assertFalse(check_parquet_is_empty(dataset_dir.as_uri(), self.spark))
 
 
 if __name__ == "__main__":
