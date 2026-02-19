@@ -1,0 +1,48 @@
+<workflow-app name="workflow-dsfi" xmlns="uri:oozie:workflow:0.5">
+    <start to="detection_perimetrage_vide"/>
+
+    <action name="detection_perimetrage_vide">
+        <shell xmlns="uri:oozie:shell-action:0.3">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <exec>python3</exec>
+            <argument>src/dsn_verificationdeclarative_perimetrage_vide/main.py</argument>
+            <argument>--perimetrage-dacd-path</argument>
+            <argument>${perimetrage_dacd_parquet_path}</argument>
+            <argument>--tir-output-path</argument>
+            <argument>${tir_output_path}</argument>
+            <file>${wf:appPath()}/src/dsn_verificationdeclarative_perimetrage_vide/main.py#main.py</file>
+            <capture-output/>
+        </shell>
+        <ok to="decision_perimetrage_vide"/>
+        <error to="kill"/>
+    </action>
+
+    <decision name="decision_perimetrage_vide">
+        <switch>
+            <case to="end_success">
+                ${fs:exists(concat(wf:conf('tir_output_path'), '/PERIMETRAGE_DACD_VIDE'))}
+            </case>
+            <default to="suite_pipeline"/>
+        </switch>
+    </decision>
+
+    <action name="suite_pipeline">
+        <shell xmlns="uri:oozie:shell-action:0.3">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <exec>bash</exec>
+            <argument>-c</argument>
+            <argument>echo "Suite du workflow DSFI"</argument>
+        </shell>
+        <ok to="end_success"/>
+        <error to="kill"/>
+    </action>
+
+    <kill name="kill">
+        <message>Workflow failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+
+    <end name="end_success"/>
+</workflow-app>
+
