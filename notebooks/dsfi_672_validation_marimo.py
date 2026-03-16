@@ -18,7 +18,7 @@ def _():
 
 @app.cell
 def _(mo):
-    mo.md(
+    return mo.md(
         """
     # Validation Histoire Utilisateur DSFI-672
 
@@ -28,7 +28,6 @@ def _(mo):
     - la présence et la cohérence des anomalies **8e5a** et **8e5b**.
     """
     )
-    return
 
 
 @app.cell
@@ -86,6 +85,19 @@ def _(os):
     path_bilan = "tests/local/test_local_DSFI-672_tfi/outputs/current_captures/DSFI-672/current-dsn_verificationdeclarative_precalculsmonoperiode_pre_bilan.csv.gz"
     files_ok = os.path.exists(path_peri) and os.path.exists(path_bilan)
     return files_ok, path_bilan, path_peri
+
+
+@app.cell
+def _(files_ok, mo, path_bilan, path_peri):
+    if files_ok:
+        return mo.callout(
+            f"Données trouvées :\n- {path_peri}\n- {path_bilan}",
+            kind="success",
+        )
+    return mo.callout(
+        "Fichiers de captures introuvables. Vérifiez le run TFI et les chemins.",
+        kind="danger",
+    )
 
 
 @app.cell
@@ -219,7 +231,7 @@ def _(con, mo, validation_inputs):
         else "Le SIRET attendu passant n'est pas trouvé dans l'état attendu (présence sans atypie)."
     )
 
-    mo.vstack(
+    v1_ui = mo.vstack(
         [
             mo.md("## Validation 1 : Au moins un SIRET passant sans atypie"),
             mo.md(f"**SIRET** : `{v1_target_siret}`"),
@@ -230,7 +242,7 @@ def _(con, mo, validation_inputs):
             mo.md(f"**Interprétation** : {interpretation_v1}"),
         ]
     )
-    return
+    return (v1_ui,)
 
 
 @app.cell
@@ -271,7 +283,7 @@ def _(con, mo, validation_inputs):
         else f"Codes manquants pour ce SIRET/IdDsn : {missing_codes_v2 if missing_codes_v2 else 'Aucun, mais périmètre absent'}."
     )
 
-    mo.vstack(
+    v2_ui = mo.vstack(
         [
             mo.md("## Validation 2 : Au moins un SIRET non passant avec atypie"),
             mo.md(f"**SIRET** : `{v2_target_siret}`"),
@@ -283,7 +295,7 @@ def _(con, mo, validation_inputs):
             mo.md(f"**Interprétation** : {interpretation_v2}"),
         ]
     )
-    return
+    return (v2_ui,)
 
 
 @app.cell
@@ -352,7 +364,7 @@ def _(
         else "[ECHEC]"
     )
 
-    mo.vstack(
+    v3_ui = mo.vstack(
         [
             mo.md("## Validation 3 : Contrôle détaillé des contenus JSON d'atypie"),
             mo.ui.table(summary_rows_v3),
@@ -360,12 +372,22 @@ def _(
             *details_blocks_v3,
         ]
     )
-    return
+    return (v3_ui,)
 
 
 @app.cell
-def _():
-    return
+def _(files_ok, mo, v1_ui, v2_ui, v3_ui):
+    if not files_ok:
+        return mo.md("## Fin du rapport de validation\n\nExécution arrêtée : captures indisponibles.")
+    return mo.vstack(
+        [
+            mo.md("## Synthèse"),
+            v1_ui,
+            v2_ui,
+            v3_ui,
+            mo.md("## Fin du rapport de validation"),
+        ]
+    )
 
 
 if __name__ == "__main__":
