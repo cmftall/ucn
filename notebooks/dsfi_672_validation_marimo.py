@@ -191,43 +191,43 @@ def _(Dict, List, Tuple, json):
 
 @app.cell
 def _(con, mo, validation_inputs):
-    target_siret = validation_inputs["passant"]["siret"]
-    target_iddsn = validation_inputs["passant"]["iddsn"]
+    v1_target_siret = validation_inputs["passant"]["siret"]
+    v1_target_iddsn = validation_inputs["passant"]["iddsn"]
 
-    peri_count = con.execute(
+    v1_peri_count = con.execute(
         """
         SELECT COUNT(*) AS nb
         FROM perimetrage
         WHERE SIRET = ? AND IdDsn = ?
         """,
-        [target_siret, target_iddsn],
+        [v1_target_siret, v1_target_iddsn],
     ).fetchone()[0]
 
-    anom_count = con.execute(
+    v1_anom_count = con.execute(
         """
         SELECT COUNT(*) AS nb
         FROM bilan
         WHERE SIRET = ? AND IdDsn = ? AND Declenchement = '1'
         """,
-        [target_siret, target_iddsn],
+        [v1_target_siret, v1_target_iddsn],
     ).fetchone()[0]
 
-    status = "[VALIDE]" if (peri_count > 0 and anom_count == 0) else "[ECHEC]"
-    interpretation = (
+    status_v1 = "[VALIDE]" if (v1_peri_count > 0 and v1_anom_count == 0) else "[ECHEC]"
+    interpretation_v1 = (
         "Le SIRET est présent dans le périmétrage et ne déclenche aucune atypie."
-        if status == "[VALIDE]"
+        if status_v1 == "[VALIDE]"
         else "Le SIRET attendu passant n'est pas trouvé dans l'état attendu (présence sans atypie)."
     )
 
     mo.vstack(
         [
             mo.md("## Validation 1 : Au moins un SIRET passant sans atypie"),
-            mo.md(f"**SIRET** : `{target_siret}`"),
-            mo.md(f"**IdDsn** : `{target_iddsn}`"),
-            mo.md(f"Périmétrage trouvé : **{peri_count}**"),
-            mo.md(f"Atypies déclenchées : **{anom_count}**"),
-            mo.md(f"### Résultat : {status}"),
-            mo.md(f"**Interprétation** : {interpretation}"),
+            mo.md(f"**SIRET** : `{v1_target_siret}`"),
+            mo.md(f"**IdDsn** : `{v1_target_iddsn}`"),
+            mo.md(f"Périmétrage trouvé : **{v1_peri_count}**"),
+            mo.md(f"Atypies déclenchées : **{v1_anom_count}**"),
+            mo.md(f"### Résultat : {status_v1}"),
+            mo.md(f"**Interprétation** : {interpretation_v1}"),
         ]
     )
     return
@@ -235,19 +235,19 @@ def _(con, mo, validation_inputs):
 
 @app.cell
 def _(con, mo, validation_inputs):
-    target_siret = validation_inputs["non_passant"]["siret"]
-    target_iddsn = validation_inputs["non_passant"]["iddsn"]
+    v2_target_siret = validation_inputs["non_passant"]["siret"]
+    v2_target_iddsn = validation_inputs["non_passant"]["iddsn"]
 
-    peri_count = con.execute(
+    v2_peri_count = con.execute(
         """
         SELECT COUNT(*) AS nb
         FROM perimetrage
         WHERE SIRET = ? AND IdDsn = ?
         """,
-        [target_siret, target_iddsn],
+        [v2_target_siret, v2_target_iddsn],
     ).fetchone()[0]
 
-    anomalies_df = con.execute(
+    v2_anomalies_df = con.execute(
         """
         SELECT Code, COUNT(*) AS Occurrence
         FROM bilan
@@ -255,30 +255,32 @@ def _(con, mo, validation_inputs):
         GROUP BY Code
         ORDER BY Code
         """,
-        [target_siret, target_iddsn],
+        [v2_target_siret, v2_target_iddsn],
     ).df()
 
-    observed_codes = set(anomalies_df["Code"].tolist()) if len(anomalies_df) else set()
-    required_codes = {"DI_EXO_08e5a_V01", "DI_EXO_08e5b_V01"}
-    missing_codes = sorted(required_codes - observed_codes)
+    observed_codes_v2 = (
+        set(v2_anomalies_df["Code"].tolist()) if len(v2_anomalies_df) else set()
+    )
+    required_codes_v2 = {"DI_EXO_08e5a_V01", "DI_EXO_08e5b_V01"}
+    missing_codes_v2 = sorted(required_codes_v2 - observed_codes_v2)
 
-    status = "[VALIDE]" if (peri_count > 0 and not missing_codes) else "[ECHEC]"
-    interpretation = (
+    status_v2 = "[VALIDE]" if (v2_peri_count > 0 and not missing_codes_v2) else "[ECHEC]"
+    interpretation_v2 = (
         "Le SIRET non passant est bien en périmètre et déclenche les atypies 8e5a et 8e5b."
-        if status == "[VALIDE]"
-        else f"Codes manquants pour ce SIRET/IdDsn : {missing_codes if missing_codes else 'Aucun, mais périmètre absent'}."
+        if status_v2 == "[VALIDE]"
+        else f"Codes manquants pour ce SIRET/IdDsn : {missing_codes_v2 if missing_codes_v2 else 'Aucun, mais périmètre absent'}."
     )
 
     mo.vstack(
         [
             mo.md("## Validation 2 : Au moins un SIRET non passant avec atypie"),
-            mo.md(f"**SIRET** : `{target_siret}`"),
-            mo.md(f"**IdDsn** : `{target_iddsn}`"),
-            mo.md(f"Périmétrage trouvé : **{peri_count}**"),
+            mo.md(f"**SIRET** : `{v2_target_siret}`"),
+            mo.md(f"**IdDsn** : `{v2_target_iddsn}`"),
+            mo.md(f"Périmétrage trouvé : **{v2_peri_count}**"),
             mo.md("Anomalies observées :"),
-            mo.ui.table(anomalies_df),
-            mo.md(f"### Résultat : {status}"),
-            mo.md(f"**Interprétation** : {interpretation}"),
+            mo.ui.table(v2_anomalies_df),
+            mo.md(f"### Résultat : {status_v2}"),
+            mo.md(f"**Interprétation** : {interpretation_v2}"),
         ]
     )
     return
@@ -292,11 +294,11 @@ def _(
     mo,
     validation_inputs,
 ):
-    target_siret = validation_inputs["non_passant"]["siret"]
-    target_iddsn = validation_inputs["non_passant"]["iddsn"]
-    expected_by_code = validation_inputs["expected_by_code"]
+    v3_target_siret = validation_inputs["non_passant"]["siret"]
+    v3_target_iddsn = validation_inputs["non_passant"]["iddsn"]
+    v3_expected_by_code = validation_inputs["expected_by_code"]
 
-    anomalies_rows = con.execute(
+    v3_anomalies_rows = con.execute(
         """
         SELECT Code, Data
         FROM bilan
@@ -305,53 +307,57 @@ def _(
           AND Declenchement = '1'
           AND Code IN ('DI_EXO_08e5a_V01', 'DI_EXO_08e5b_V01')
         """,
-        [target_siret, target_iddsn],
+        [v3_target_siret, v3_target_iddsn],
     ).fetchall()
 
-    payload_by_code = {}
-    for code, raw_data in anomalies_rows:
-        payload_by_code[code] = _safe_parse_json(raw_data)
+    payload_by_code_v3 = {}
+    for code, raw_data in v3_anomalies_rows:
+        payload_by_code_v3[code] = _safe_parse_json(raw_data)
 
-    summary_rows = []
-    details_blocks = []
-    for code, expected in expected_by_code.items():
-        payload = payload_by_code.get(code, {})
-        if not payload:
-            summary_rows.append(
+    summary_rows_v3 = []
+    details_blocks_v3 = []
+    for code, expected in v3_expected_by_code.items():
+        payload_v3 = payload_by_code_v3.get(code, {})
+        if not payload_v3:
+            summary_rows_v3.append(
                 {"Code": code, "Statut": "KO", "Détail": "Aucune ligne trouvée dans bilan"}
             )
-            details_blocks.append(
+            details_blocks_v3.append(
                 mo.md(f"### {code}\n\nAucune donnée trouvée pour ce code.")
             )
             continue
 
-        passed, check_lines = _validate_expected_fields(payload, expected)
-        summary_rows.append(
+        passed_v3, check_lines_v3 = _validate_expected_fields(payload_v3, expected)
+        summary_rows_v3.append(
             {
                 "Code": code,
-                "Statut": "OK" if passed else "KO",
+                "Statut": "OK" if passed_v3 else "KO",
                 "Détail": "Tous les champs attendus correspondent"
-                if passed
+                if passed_v3
                 else "Écarts détectés dans les champs/texte atypie",
             }
         )
-        details_blocks.append(
+        details_blocks_v3.append(
             mo.vstack(
                 [
                     mo.md(f"### {code}"),
-                    mo.ui.table(check_lines),
+                    mo.ui.table(check_lines_v3),
                 ]
             )
         )
 
-    global_status = "[VALIDE]" if all(row["Statut"] == "OK" for row in summary_rows) else "[ECHEC]"
+    global_status_v3 = (
+        "[VALIDE]"
+        if all(row["Statut"] == "OK" for row in summary_rows_v3)
+        else "[ECHEC]"
+    )
 
     mo.vstack(
         [
             mo.md("## Validation 3 : Contrôle détaillé des contenus JSON d'atypie"),
-            mo.ui.table(summary_rows),
-            mo.md(f"### Résultat global : {global_status}"),
-            *details_blocks,
+            mo.ui.table(summary_rows_v3),
+            mo.md(f"### Résultat global : {global_status_v3}"),
+            *details_blocks_v3,
         ]
     )
     return
